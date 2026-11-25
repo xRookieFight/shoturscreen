@@ -1,6 +1,6 @@
 [package]
 name = "shoturscreen"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 description = "Fast region screenshot to clipboard for KDE Plasma on Wayland"
 license = "MIT"
