@@ -30,6 +30,22 @@ use wayland_protocols::wp::viewporter::client::{wp_viewport::WpViewport, wp_view
 use crate::capture::{self, Image};
 
 const DIM: u32 = 140;
+const BORDER: [u8; 4] = [0xe9, 0xae, 0x3d, 0xff];
+const BTN_LEFT: u32 = 0x110;
+const BTN_RIGHT: u32 = 0x111;
+
+struct Drag {
+    view: usize,
+    start: (f64, f64),
+    end: (f64, f64),
+}
+
+struct Rect {
+    x: u32,
+    y: u32,
+    w: u32,
+    h: u32,
+}
 
 struct View {
     image: Image,
@@ -53,10 +69,12 @@ struct App {
     views: Vec<View>,
     keyboard: Option<wl_keyboard::WlKeyboard>,
     pointer: Option<ThemedPointer>,
+    drag: Option<Drag>,
+    result: Option<Image>,
     done: bool,
 }
 
-pub fn run() -> Result<(), String> {
+pub fn run() -> Result<Option<Image>, String> {
     let conn = Connection::connect_to_env().map_err(|e| e.to_string())?;
     let (globals, mut queue): (_, EventQueue<App>) =
         registry_queue_init(&conn).map_err(|e| e.to_string())?;
@@ -77,6 +95,8 @@ pub fn run() -> Result<(), String> {
         views: Vec::new(),
         keyboard: None,
         pointer: None,
+        drag: None,
+        result: None,
         done: false,
     };
     queue.roundtrip(&mut app).map_err(|e| e.to_string())?;
@@ -134,7 +154,7 @@ pub fn run() -> Result<(), String> {
         drop(view.layer);
     }
     let _ = queue.roundtrip(&mut app);
-    Ok(())
+    Ok(app.result.take())
 }
 
 fn dim(pixels: &[u8]) -> Vec<u8> {
@@ -156,14 +176,41 @@ impl App {
         self.views.iter().position(|view| view.layer.wl_surface() == surface)
     }
 
-    fn request_redraw(&mut self, qh: &QueueHandle<Self>) {
-        for index in 0..self.views.len() {
-            self.views[index].dirty = true;
-            self.draw(index, qh);
+    fn redraw(&mut self, index: usize, qh: &QueueHandle<Self>) {
+        self.views[index].dirty = true;
+        self.draw(index, qh);
+    }
+
+    fn selection(&self) -> Option<(usize, Rect)> {
+        let drag = self.drag.as_ref()?;
+        let view = &self.views[drag.view];
+        let (lw, lh) = (view.logical.0.max(1) as f64, view.logical.1.max(1) as f64);
+        let sx = view.image.width as f64 / lw;
+        let sy = view.image.height as f64 / lh;
+        let clamp = |v: f64, max: f64| v.clamp(0.0, max);
+        let x0 = (clamp(drag.start.0.min(drag.end.0), lw) * sx).round() as u32;
+        let x1 = (clamp(drag.start.0.max(drag.end.0), lw) * sx).round() as u32;
+        let y0 = (clamp(drag.start.1.min(drag.end.1), lh) * sy).round() as u32;
+        let y1 = (clamp(drag.start.1.max(drag.end.1), lh) * sy).round() as u32;
+        Some((drag.view, Rect { x: x0, y: y0, w: x1.min(view.image.width) - x0, h: y1.min(view.image.height) - y0 }))
+    }
+
+    fn finish(&mut self) {
+        if let Some((index, rect)) = self.selection().filter(|(_, r)| r.w > 0 && r.h > 0) {
+            let image = &self.views[index].image;
+            let stride = image.width as usize * 4;
+            let mut pixels = Vec::with_capacity(rect.w as usize * rect.h as usize * 4);
+            for y in rect.y..rect.y + rect.h {
+                let start = y as usize * stride + rect.x as usize * 4;
+                pixels.extend_from_slice(&image.pixels[start..start + rect.w as usize * 4]);
+            }
+            self.result = Some(Image { width: rect.w, height: rect.h, pixels });
         }
+        self.done = true;
     }
 
     fn draw(&mut self, index: usize, qh: &QueueHandle<Self>) {
+        let selection = self.selection().filter(|(view, _)| *view == index).map(|(_, rect)| rect);
         let shm = &self.shm;
         let view = &mut self.views[index];
         if !view.configured || !view.dirty || view.frame_pending {
@@ -184,6 +231,9 @@ impl App {
             return;
         };
         canvas.copy_from_slice(&view.dimmed);
+        if let Some(rect) = selection {
+            paint_selection(canvas, &view.image, &rect, view.logical.0);
+        }
 
         let surface = view.layer.wl_surface();
         view.viewport.set_source(0.0, 0.0, width as f64, height as f64);
@@ -197,6 +247,32 @@ impl App {
         view.dirty = false;
         view.frame_pending = true;
     }
+}
+
+fn paint_selection(canvas: &mut [u8], image: &Image, rect: &Rect, logical_width: u32) {
+    if rect.w == 0 || rect.h == 0 {
+        return;
+    }
+    let stride = image.width as usize * 4;
+    let (x0, x1) = (rect.x as usize * 4, (rect.x + rect.w) as usize * 4);
+    for y in rect.y..rect.y + rect.h {
+        let row = y as usize * stride;
+        canvas[row + x0..row + x1].copy_from_slice(&image.pixels[row + x0..row + x1]);
+    }
+    let thickness = (image.width as f64 / logical_width.max(1) as f64).round().max(1.0) as u32;
+    let t = thickness.min(rect.w).min(rect.h);
+    let mut fill = |x: u32, y: u32, w: u32, h: u32| {
+        for yy in y..y + h {
+            let row = yy as usize * stride;
+            for px in canvas[row + x as usize * 4..row + (x + w) as usize * 4].chunks_exact_mut(4) {
+                px.copy_from_slice(&BORDER);
+            }
+        }
+    };
+    fill(rect.x, rect.y, rect.w, t);
+    fill(rect.x, rect.y + rect.h - t, rect.w, t);
+    fill(rect.x, rect.y, t, rect.h);
+    fill(rect.x + rect.w - t, rect.y, t, rect.h);
 }
 
 impl CompositorHandler for App {
@@ -335,19 +411,39 @@ impl KeyboardHandler for App {
 impl PointerHandler for App {
     fn pointer_frame(&mut self, conn: &Connection, qh: &QueueHandle<Self>, _: &wl_pointer::WlPointer, events: &[PointerEvent]) {
         for event in events {
+            let index = self.view_index(&event.surface);
             match event.kind {
                 PointerEventKind::Enter { .. } => {
                     if let Some(pointer) = &self.pointer {
                         let _ = pointer.set_cursor(conn, CursorIcon::Crosshair);
                     }
                 }
-                PointerEventKind::Press { button: 0x111, .. } => {
+                PointerEventKind::Press { button: BTN_LEFT, .. } => {
+                    if let Some(index) = index {
+                        self.drag = Some(Drag { view: index, start: event.position, end: event.position });
+                    }
+                }
+                PointerEventKind::Motion { .. } => {
+                    if let Some(drag) = self.drag.as_mut().filter(|drag| Some(drag.view) == index) {
+                        drag.end = event.position;
+                        let view = drag.view;
+                        self.redraw(view, qh);
+                    }
+                }
+                PointerEventKind::Release { button: BTN_LEFT, .. } => {
+                    if let Some(drag) = self.drag.as_mut().filter(|drag| Some(drag.view) == index) {
+                        drag.end = event.position;
+                    }
+                    if self.drag.is_some() {
+                        self.finish();
+                    }
+                }
+                PointerEventKind::Press { button: BTN_RIGHT, .. } => {
                     self.done = true;
                 }
                 _ => {}
             }
         }
-        let _ = qh;
     }
 }
 
