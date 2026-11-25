@@ -129,7 +129,7 @@ pub fn run() -> Result<Option<Image>, String> {
             &qh,
             surface,
             Layer::Overlay,
-            Some("shoturscreen"),
+            Some("dock"),
             Some(&output),
         );
         layer.set_anchor(Anchor::TOP | Anchor::BOTTOM | Anchor::LEFT | Anchor::RIGHT);
