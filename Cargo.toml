@@ -11,6 +11,9 @@ zbus = { version = "5", default-features = false, features = ["blocking-api", "a
 smithay-client-toolkit = { version = "0.20", default-features = false, features = ["xkbcommon"] }
 wayland-client = "0.31"
 wayland-protocols = { version = "0.32", features = ["client"] }
+png = "0.18"
+wl-clipboard-rs = "0.9"
+libc = "0.2"
 
 [profile.release]
 opt-level = 3
