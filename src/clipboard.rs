@@ -8,7 +8,10 @@ pub fn copy_png(image: &Image) -> Result<(), String> {
     let mut options = Options::new();
     options.foreground(true);
     let prepared = options
-        .prepare_copy(Source::Bytes(png.into_boxed_slice()), MimeType::Specific("image/png".into()))
+        .prepare_copy(
+            Source::Bytes(png.into_boxed_slice()),
+            MimeType::Specific("image/png".into()),
+        )
         .map_err(|e| e.to_string())?;
 
     match unsafe { libc::fork() } {

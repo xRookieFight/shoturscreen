@@ -9,7 +9,9 @@ use smithay_client_toolkit::{
     seat::{
         Capability, SeatHandler, SeatState,
         keyboard::{KeyEvent, KeyboardHandler, Keysym, Modifiers, RawModifiers},
-        pointer::{CursorIcon, PointerEvent, PointerEventKind, PointerHandler, ThemeSpec, ThemedPointer},
+        pointer::{
+            CursorIcon, PointerEvent, PointerEventKind, PointerHandler, ThemeSpec, ThemedPointer,
+        },
     },
     shell::{
         WaylandSurface,
@@ -25,7 +27,9 @@ use wayland_client::{
     globals::registry_queue_init,
     protocol::{wl_keyboard, wl_output, wl_pointer, wl_seat, wl_shm, wl_surface},
 };
-use wayland_protocols::wp::viewporter::client::{wp_viewport::WpViewport, wp_viewporter::WpViewporter};
+use wayland_protocols::wp::viewporter::client::{
+    wp_viewport::WpViewport, wp_viewporter::WpViewporter,
+};
 
 use crate::capture::{self, Image};
 
@@ -83,7 +87,8 @@ pub fn run() -> Result<Option<Image>, String> {
     let compositor = CompositorState::bind(&globals, &qh).map_err(|e| e.to_string())?;
     let layer_shell = LayerShell::bind(&globals, &qh).map_err(|e| e.to_string())?;
     let shm = Shm::bind(&globals, &qh).map_err(|e| e.to_string())?;
-    let viewporter = SimpleGlobal::<WpViewporter, 1>::bind(&globals, &qh).map_err(|e| e.to_string())?;
+    let viewporter =
+        SimpleGlobal::<WpViewporter, 1>::bind(&globals, &qh).map_err(|e| e.to_string())?;
 
     let mut app = App {
         registry_state: RegistryState::new(&globals),
@@ -146,7 +151,9 @@ pub fn run() -> Result<Option<Image>, String> {
     }
 
     while !app.done {
-        queue.blocking_dispatch(&mut app).map_err(|e| e.to_string())?;
+        queue
+            .blocking_dispatch(&mut app)
+            .map_err(|e| e.to_string())?;
     }
 
     for view in app.views.drain(..) {
@@ -173,7 +180,9 @@ fn dim(pixels: &[u8]) -> Vec<u8> {
 
 impl App {
     fn view_index(&self, surface: &wl_surface::WlSurface) -> Option<usize> {
-        self.views.iter().position(|view| view.layer.wl_surface() == surface)
+        self.views
+            .iter()
+            .position(|view| view.layer.wl_surface() == surface)
     }
 
     fn redraw(&mut self, index: usize, qh: &QueueHandle<Self>) {
@@ -192,7 +201,15 @@ impl App {
         let x1 = (clamp(drag.start.0.max(drag.end.0), lw) * sx).round() as u32;
         let y0 = (clamp(drag.start.1.min(drag.end.1), lh) * sy).round() as u32;
         let y1 = (clamp(drag.start.1.max(drag.end.1), lh) * sy).round() as u32;
-        Some((drag.view, Rect { x: x0, y: y0, w: x1.min(view.image.width) - x0, h: y1.min(view.image.height) - y0 }))
+        Some((
+            drag.view,
+            Rect {
+                x: x0,
+                y: y0,
+                w: x1.min(view.image.width) - x0,
+                h: y1.min(view.image.height) - y0,
+            },
+        ))
     }
 
     fn finish(&mut self) {
@@ -204,13 +221,20 @@ impl App {
                 let start = y as usize * stride + rect.x as usize * 4;
                 pixels.extend_from_slice(&image.pixels[start..start + rect.w as usize * 4]);
             }
-            self.result = Some(Image { width: rect.w, height: rect.h, pixels });
+            self.result = Some(Image {
+                width: rect.w,
+                height: rect.h,
+                pixels,
+            });
         }
         self.done = true;
     }
 
     fn draw(&mut self, index: usize, qh: &QueueHandle<Self>) {
-        let selection = self.selection().filter(|(view, _)| *view == index).map(|(_, rect)| rect);
+        let selection = self
+            .selection()
+            .filter(|(view, _)| *view == index)
+            .map(|(_, rect)| rect);
         let shm = &self.shm;
         let view = &mut self.views[index];
         if !view.configured || !view.dirty || view.frame_pending {
@@ -226,7 +250,8 @@ impl App {
                 Err(_) => return,
             },
         };
-        let Ok((buffer, canvas)) = pool.create_buffer(width, height, stride, wl_shm::Format::Argb8888)
+        let Ok((buffer, canvas)) =
+            pool.create_buffer(width, height, stride, wl_shm::Format::Argb8888)
         else {
             return;
         };
@@ -236,8 +261,10 @@ impl App {
         }
 
         let surface = view.layer.wl_surface();
-        view.viewport.set_source(0.0, 0.0, width as f64, height as f64);
-        view.viewport.set_destination(view.logical.0 as i32, view.logical.1 as i32);
+        view.viewport
+            .set_source(0.0, 0.0, width as f64, height as f64);
+        view.viewport
+            .set_destination(view.logical.0 as i32, view.logical.1 as i32);
         surface.damage_buffer(0, 0, width, height);
         surface.frame(qh, surface.clone());
         if buffer.attach_to(surface).is_err() {
@@ -259,7 +286,9 @@ fn paint_selection(canvas: &mut [u8], image: &Image, rect: &Rect, logical_width:
         let row = y as usize * stride;
         canvas[row + x0..row + x1].copy_from_slice(&image.pixels[row + x0..row + x1]);
     }
-    let thickness = (image.width as f64 / logical_width.max(1) as f64).round().max(1.0) as u32;
+    let thickness = (image.width as f64 / logical_width.max(1) as f64)
+        .round()
+        .max(1.0) as u32;
     let t = thickness.min(rect.w).min(rect.h);
     let mut fill = |x: u32, y: u32, w: u32, h: u32| {
         for yy in y..y + h {
@@ -276,7 +305,14 @@ fn paint_selection(canvas: &mut [u8], image: &Image, rect: &Rect, logical_width:
 }
 
 impl CompositorHandler for App {
-    fn scale_factor_changed(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_surface::WlSurface, _: i32) {}
+    fn scale_factor_changed(
+        &mut self,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+        _: &wl_surface::WlSurface,
+        _: i32,
+    ) {
+    }
 
     fn transform_changed(
         &mut self,
@@ -287,16 +323,36 @@ impl CompositorHandler for App {
     ) {
     }
 
-    fn frame(&mut self, _: &Connection, qh: &QueueHandle<Self>, surface: &wl_surface::WlSurface, _: u32) {
+    fn frame(
+        &mut self,
+        _: &Connection,
+        qh: &QueueHandle<Self>,
+        surface: &wl_surface::WlSurface,
+        _: u32,
+    ) {
         if let Some(index) = self.view_index(surface) {
             self.views[index].frame_pending = false;
             self.draw(index, qh);
         }
     }
 
-    fn surface_enter(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_surface::WlSurface, _: &wl_output::WlOutput) {}
+    fn surface_enter(
+        &mut self,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+        _: &wl_surface::WlSurface,
+        _: &wl_output::WlOutput,
+    ) {
+    }
 
-    fn surface_leave(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_surface::WlSurface, _: &wl_output::WlOutput) {}
+    fn surface_leave(
+        &mut self,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+        _: &wl_surface::WlSurface,
+        _: &wl_output::WlOutput,
+    ) {
+    }
 }
 
 impl OutputHandler for App {
@@ -329,7 +385,11 @@ impl LayerShellHandler for App {
         };
         let view = &mut self.views[index];
         let (w, h) = configure.new_size;
-        view.logical = if w == 0 || h == 0 { (view.image.width, view.image.height) } else { (w, h) };
+        view.logical = if w == 0 || h == 0 {
+            (view.image.width, view.image.height)
+        } else {
+            (w, h)
+        };
         view.configured = true;
         view.dirty = true;
         self.draw(index, qh);
@@ -343,7 +403,13 @@ impl SeatHandler for App {
 
     fn new_seat(&mut self, _: &Connection, _: &QueueHandle<Self>, _: wl_seat::WlSeat) {}
 
-    fn new_capability(&mut self, _: &Connection, qh: &QueueHandle<Self>, seat: wl_seat::WlSeat, capability: Capability) {
+    fn new_capability(
+        &mut self,
+        _: &Connection,
+        qh: &QueueHandle<Self>,
+        seat: wl_seat::WlSeat,
+        capability: Capability,
+    ) {
         if capability == Capability::Keyboard && self.keyboard.is_none() {
             self.keyboard = self.seat_state.get_keyboard(qh, &seat, None).ok();
         }
@@ -356,7 +422,13 @@ impl SeatHandler for App {
         }
     }
 
-    fn remove_capability(&mut self, _: &Connection, _: &QueueHandle<Self>, _: wl_seat::WlSeat, capability: Capability) {
+    fn remove_capability(
+        &mut self,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+        _: wl_seat::WlSeat,
+        capability: Capability,
+    ) {
         if capability == Capability::Keyboard {
             if let Some(keyboard) = self.keyboard.take() {
                 keyboard.release();
@@ -383,17 +455,48 @@ impl KeyboardHandler for App {
     ) {
     }
 
-    fn leave(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_keyboard::WlKeyboard, _: &wl_surface::WlSurface, _: u32) {}
+    fn leave(
+        &mut self,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+        _: &wl_keyboard::WlKeyboard,
+        _: &wl_surface::WlSurface,
+        _: u32,
+    ) {
+    }
 
-    fn press_key(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_keyboard::WlKeyboard, _: u32, event: KeyEvent) {
+    fn press_key(
+        &mut self,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+        _: &wl_keyboard::WlKeyboard,
+        _: u32,
+        event: KeyEvent,
+    ) {
         if event.keysym == Keysym::Escape {
             self.done = true;
         }
     }
 
-    fn repeat_key(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_keyboard::WlKeyboard, _: u32, _: KeyEvent) {}
+    fn repeat_key(
+        &mut self,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+        _: &wl_keyboard::WlKeyboard,
+        _: u32,
+        _: KeyEvent,
+    ) {
+    }
 
-    fn release_key(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_keyboard::WlKeyboard, _: u32, _: KeyEvent) {}
+    fn release_key(
+        &mut self,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+        _: &wl_keyboard::WlKeyboard,
+        _: u32,
+        _: KeyEvent,
+    ) {
+    }
 
     fn update_modifiers(
         &mut self,
@@ -409,7 +512,13 @@ impl KeyboardHandler for App {
 }
 
 impl PointerHandler for App {
-    fn pointer_frame(&mut self, conn: &Connection, qh: &QueueHandle<Self>, _: &wl_pointer::WlPointer, events: &[PointerEvent]) {
+    fn pointer_frame(
+        &mut self,
+        conn: &Connection,
+        qh: &QueueHandle<Self>,
+        _: &wl_pointer::WlPointer,
+        events: &[PointerEvent],
+    ) {
         for event in events {
             let index = self.view_index(&event.surface);
             match event.kind {
@@ -418,9 +527,15 @@ impl PointerHandler for App {
                         let _ = pointer.set_cursor(conn, CursorIcon::Crosshair);
                     }
                 }
-                PointerEventKind::Press { button: BTN_LEFT, .. } => {
+                PointerEventKind::Press {
+                    button: BTN_LEFT, ..
+                } => {
                     if let Some(index) = index {
-                        self.drag = Some(Drag { view: index, start: event.position, end: event.position });
+                        self.drag = Some(Drag {
+                            view: index,
+                            start: event.position,
+                            end: event.position,
+                        });
                     }
                 }
                 PointerEventKind::Motion { .. } => {
@@ -430,7 +545,9 @@ impl PointerHandler for App {
                         self.redraw(view, qh);
                     }
                 }
-                PointerEventKind::Release { button: BTN_LEFT, .. } => {
+                PointerEventKind::Release {
+                    button: BTN_LEFT, ..
+                } => {
                     if let Some(drag) = self.drag.as_mut().filter(|drag| Some(drag.view) == index) {
                         drag.end = event.position;
                     }
@@ -438,7 +555,9 @@ impl PointerHandler for App {
                         self.finish();
                     }
                 }
-                PointerEventKind::Press { button: BTN_RIGHT, .. } => {
+                PointerEventKind::Press {
+                    button: BTN_RIGHT, ..
+                } => {
                     self.done = true;
                 }
                 _ => {}
@@ -460,7 +579,15 @@ impl AsMut<SimpleGlobal<WpViewporter, 1>> for App {
 }
 
 impl Dispatch<WpViewport, GlobalData> for App {
-    fn event(_: &mut Self, _: &WpViewport, _: <WpViewport as wayland_client::Proxy>::Event, _: &GlobalData, _: &Connection, _: &QueueHandle<Self>) {}
+    fn event(
+        _: &mut Self,
+        _: &WpViewport,
+        _: <WpViewport as wayland_client::Proxy>::Event,
+        _: &GlobalData,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
 }
 
 impl ProvidesRegistryState for App {

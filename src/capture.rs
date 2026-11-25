@@ -31,7 +31,11 @@ pub fn capture_screens(names: &[String]) -> Result<Vec<Image>, String> {
             .collect();
         handles
             .into_iter()
-            .map(|handle| handle.join().map_err(|_| "capture thread panicked".to_string())?)
+            .map(|handle| {
+                handle
+                    .join()
+                    .map_err(|_| "capture thread panicked".to_string())?
+            })
             .collect()
     })
 }
@@ -93,7 +97,11 @@ fn capture_screen(connection: &Connection, name: &str) -> Result<Image, String> 
         px[3] = 0xff;
     }
 
-    Ok(Image { width, height, pixels })
+    Ok(Image {
+        width,
+        height,
+        pixels,
+    })
 }
 
 fn read_u32(results: &HashMap<String, OwnedValue>, key: &str) -> Result<u32, String> {
