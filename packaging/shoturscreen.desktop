@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=shoturscreen
+Comment=Capture a screen region straight to the clipboard
+Exec=@BINARY@
+Icon=spectacle
+Terminal=false
+NoDisplay=true
+StartupNotify=false
+Categories=Utility;
+X-KDE-Shortcuts=Meta+Shift+S
+X-KDE-DBUS-Restricted-Interfaces=org.kde.KWin.ScreenShot2
