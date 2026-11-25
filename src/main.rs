@@ -1,13 +1,14 @@
 mod capture;
+mod overlay;
 
-fn main() {
-    let names: Vec<String> = std::env::args().skip(1).collect();
-    match capture::capture_screens(&names) {
-        Ok(images) => {
-            for image in images {
-                println!("{}x{} {}", image.width, image.height, image.pixels.len());
-            }
+use std::process::ExitCode;
+
+fn main() -> ExitCode {
+    match overlay::run() {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => {
+            eprintln!("shoturscreen: {e}");
+            ExitCode::FAILURE
         }
-        Err(e) => eprintln!("{e}"),
     }
 }
